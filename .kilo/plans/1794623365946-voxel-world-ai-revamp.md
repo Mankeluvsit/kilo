@@ -1050,7 +1050,180 @@ export const REPAIR_COST_RATIO = 0.5;
 export const TRAFFIC_JAM_THRESHOLD = 3;
 export const CONGESTION_HAPPINESS_PENALTY = -5;
 export const NIGHT_GLOW_INTENSITY = 0.5;
-export const SCREENSHOT_RESOLUTION = 4;  // 4x render scale
+## 23. Independent Discovery & Design Expansion
+
+### 23.1 Architectural Weaknesses Identified
+
+1. **God component (App.tsx):** Single component manages game state, simulation loop, rendering, UI, and persistence. At ~1000+ lines, this violates separation of concerns. **Recommended:** Split into simulation engine (pure logic, testable), state management (React context or store), and rendering (R3F scene). Priority: High. Complexity: Medium. Phase: 1.
+
+2. **No spatial indexing:** Finding neighbors, buildings within radius, or connected roads requires O(n) scans over all tiles. With 3600 tiles + hundreds of citizens, this is a bottleneck. **Recommended:** Implement a spatial hash or quadtree for O(1) neighbor queries. Priority: High. Complexity: Medium. Phase: 1.
+
+3. **No event sourcing:** State changes are direct mutations, not recorded as events. This makes debugging, replay, and undo impossible at the system level. **Recommended:** Implement command pattern — every state change is a command object with execute/undo. Enables undo/redo, replay, and audit trail. Priority: Medium. Complexity: High. Phase: 2.
+
+4. **No entity component system:** Using object-oriented approach with inheritance. Adding new entity types requires modifying base classes. **Recommended:** Consider ECS (entity-component-system) for citizen/building/business entities. Priority: Low. Complexity: High. Phase: 3+.
+
+5. **No separation of simulation and rendering:** Simulation logic embedded in React components. Cannot run headlessly or test independently. **Recommended:** Extract simulation into pure TypeScript module with no React dependencies. React components become thin views. Priority: High. Complexity: Medium. Phase: 1.
+
+6. **No configuration management:** Settings scattered across constants.tsx, localStorage, and component state. **Recommended:** Centralized config store with schema validation, defaults, and persistence. Priority: Medium. Complexity: Low. Phase: 1.
+
+7. **No logging framework:** console.log everywhere. No log levels, filtering, or persistence. **Recommended:** Implement structured logging with levels (debug/info/warn/error), component tags, and optional file output. Priority: Low. Complexity: Low. Phase: 2.
+
+8. **No error boundaries per system:** Only top-level error boundary. A rendering error crashes the entire app. **Recommended:** Per-system error boundaries (simulation, rendering, UI) with graceful degradation. Priority: Medium. Complexity: Low. Phase: 1.
+
+### 23.2 Missing Features (not in current plan)
+
+9. **Citizen lifecycle (birth, aging, death):** Citizens are immortal. No population dynamics. **Recommended:** Add birth (requires housing + happiness), aging (skills improve with experience), death (natural/old age, disaster). Generational succession. Priority: Medium. Complexity: Medium. Phase: 2.
+
+10. **Skill progression:** Citizens don't improve at jobs. **Recommended:** Skills increase with work experience. Higher skill = higher productivity = higher wages. Creates career paths. Priority: Medium. Complexity: Low. Phase: 2.
+
+11. **Technology/research tree:** No unlocking new buildings through research. **Recommended:** Research points from university/library buildings. Unlock new building types, production recipes, and upgrades. Priority: Medium. Complexity: Medium. Phase: 2.
+
+12. **Diplomacy/relations:** No interaction with other settlements. **Recommended:** Add neighboring settlements (abstract, not rendered). Trade routes, alliances, conflicts. Affects economy and happiness. Priority: Low. Complexity: High. Phase: 3+.
+
+13. **Citizen interactions:** Citizens don't talk to each other. **Recommended:** Social interactions (greeting, conversation, conflict, friendship). Affects happiness and productivity. Visual: citizens stop and face each other briefly. Priority: Low. Complexity: Medium. Phase: 3+.
+
+14. **Quest system:** Beyond goals, no multi-step quests. **Recommended:** Quest chains with prerequisites, rewards, and branching outcomes. E.g., "Build 3 farms → Establish trade route → Unlock market upgrade." Priority: Medium. Complexity: Medium. Phase: 2.
+
+15. **Reputation/fame system:** No tracking of settlement reputation. **Recommended:** Settlement reputation affects migration (more citizens want to move in), trade prices, and tourism. Priority: Low. Complexity: Low. Phase: 3+.
+
+16. **Automated testing infrastructure:** No test framework specified. **Recommended:** Vitest + React Testing Library. Unit tests for simulation logic, integration tests for game loop, E2E tests for critical flows. Priority: High. Complexity: Medium. Phase: 1.
+
+17. **Save format versioning:** No versioned save format. **Recommended:** Add `version` field to save data. Migration functions for each version. Prevents data loss on schema changes. Priority: High. Complexity: Low. Phase: 1.
+
+18. **Automatic backups:** No backup system. **Recommended:** Auto-save to separate slot every N minutes. Keep last 3 backups. Restore from backup on corruption. Priority: Medium. Complexity: Low. Phase: 1.
+
+19. **Crash recovery:** No crash detection or recovery. **Recommended:** Detect unclean shutdown (flag in localStorage). On next load, offer to restore from last backup. Priority: Medium. Complexity: Low. Phase: 1.
+
+20. **Memory management:** No pooling or cleanup. **Recommended:** Object pooling for frequently created/destroyed entities (particles, projectiles). Periodic cleanup of old event history, completed goals, resolved disasters. Priority: Medium. Complexity: Medium. Phase: 2.
+
+21. **Hot-reload for development:** Vite HMR exists but game state is lost on reload. **Recommended:** Persist game state to sessionStorage on HMR, restore on reload. Dev-only feature. Priority: Low. Complexity: Low. Phase: 1.
+
+22. **Modding/extensibility:** No way for users to add content. **Recommended:** Data-driven content (JSON config for buildings, recipes, events). Mod folder with override support. Priority: Low. Complexity: High. Phase: 3+.
+
+23. **Localization/i18n:** All text hardcoded English. **Recommended:** Extract all strings to locale files. Support at least English and one other language. Priority: Low. Complexity: Medium. Phase: 3+.
+
+24. **Accessibility:** No screen reader support, high contrast, colorblind modes. **Recommended:** ARIA labels on UI elements, high contrast theme, colorblind-friendly color palette option, keyboard navigation for all UI. Priority: Medium. Complexity: Medium. Phase: 2.
+
+25. **Performance profiling integration:** No built-in performance monitoring. **Recommended:** Dev-mode performance overlay showing FPS, tick duration, entity counts, memory usage. Toggle with F3. Priority: Medium. Complexity: Low. Phase: 1.
+
+### 23.3 Technical Risks
+
+26. **localStorage size limits (5-10MB):** Large grids (60×60) + hundreds of citizens + event history could exceed limit. **Mitigation:** Compress save data (lz-string), split into multiple localStorage keys, or use IndexedDB for large saves. Priority: High. Complexity: Medium. Phase: 1.
+
+27. **Single-threaded simulation:** All simulation runs on main thread, blocking rendering. **Mitigation:** Move simulation to Web Worker. React components communicate via postMessage. Priority: Medium. Complexity: High. Phase: 2.
+
+28. **State mutation in game loop:** Direct mutation of state objects in setInterval. Could cause React re-render issues. **Mitigation:** Use immutable state updates or a state management library (Zustand/Redux). Priority: Medium. Complexity: Medium. Phase: 1.
+
+29. **No input validation:** User inputs (blueprint import, config values) not validated. **Mitigation:** Schema validation (zod) on all external inputs. Priority: Medium. Complexity: Low. Phase: 1.
+
+30. **Race conditions:** Async operations (fetch, setTimeout) without proper synchronization. **Mitigation:** Use AbortController for fetches, clear timeouts on unmount. Priority: Medium. Complexity: Low. Phase: 1.
+
+### 23.4 Gameplay Opportunities
+
+31. **Citizen lifecycle (birth, aging, death):** Citizens are immortal. No population dynamics. **Recommended:** Birth (requires housing + happiness + food surplus), aging (skills improve with experience, needs change), death (natural/old age, disaster, starvation). Generational succession. Priority: Medium. Complexity: Medium. Phase: 2.
+
+32. **Skill progression:** Citizens don't improve at jobs. **Recommended:** Skills increase with work experience. Higher skill = higher productivity = higher wages. Creates career paths and specialist citizens. Priority: Medium. Complexity: Low. Phase: 2.
+
+33. **Technology/research tree:** No unlocking new buildings through research. **Recommended:** Research points from university/library buildings. Unlock new building types, production recipes, and upgrades. Priority: Medium. Complexity: Medium. Phase: 2.
+
+34. **Quest system:** Beyond goals, no multi-step quests. **Recommended:** Quest chains with prerequisites, rewards, and branching outcomes. E.g., "Build 3 farms → Establish trade route → Unlock market upgrade." Priority: Medium. Complexity: Medium. Phase: 2.
+
+35. **Citizen interactions:** Citizens don't talk to each other. **Recommended:** Social interactions (greeting, conversation, conflict, friendship). Affects happiness and productivity. Visual: citizens stop and face each other briefly. Priority: Low. Complexity: Medium. Phase: 3+.
+
+36. **Reputation/fame system:** No tracking of settlement reputation. **Recommended:** Settlement reputation affects migration (more citizens want to move in), trade prices, and tourism. Priority: Low. Complexity: Low. Phase: 3+.
+
+37. **Diplomacy/relations:** No interaction with other settlements. **Recommended:** Add neighboring settlements (abstract, not rendered). Trade routes, alliances, conflicts. Affects economy and happiness. Priority: Low. Complexity: High. Phase: 3+.
+
+38. **Event system for citizen interactions:** Citizens don't have personal events. **Recommended:** Personal events (promotion, marriage, illness, accident) that affect individual citizens and their households. Priority: Medium. Complexity: Medium. Phase: 2.
+
+### 23.5 Quality-of-Life Improvements
+
+39. **Auto-save indicator:** No visual feedback when auto-save occurs. **Recommended:** Small "Saving..." indicator in corner, auto-dismisses after 1 second. Priority: Low. Complexity: Low. Phase: 1.
+
+40. **Pause on focus loss:** Game continues running when tab loses focus. **Recommended:** Auto-pause when tab loses focus (configurable). Priority: Low. Complexity: Low. Phase: 1.
+
+41. **Screenshot gallery:** Screenshot mode exists but no gallery. **Recommended:** Save screenshots to localStorage or download. Gallery view in admin console. Priority: Low. Complexity: Low. Phase: 2.
+
+42. **Undo for admin actions:** Only grid placement has undo. **Recommended:** Undo for admin commands (with true inverse operations). Priority: Medium. Complexity: Medium. Phase: 2.
+
+43. **Notification center:** No centralized notification system. **Recommended:** Bell icon with badge count. Click to see list of recent notifications (goal complete, disaster, achievement, etc.). Priority: Medium. Complexity: Low. Phase: 1.
+
+44. **Tooltips on all UI elements:** Many UI elements lack tooltips. **Recommended:** Tooltip on hover for all buttons, stats, and indicators. Priority: Low. Complexity: Low. Phase: 1.
+
+45. **Keyboard shortcut customization:** Shortcuts are hardcoded. **Recommended:** Allow remapping keyboard shortcuts in settings. Priority: Low. Complexity: Low. Phase: 3+.
+
+46. **Game speed presets:** Only single speed (2s tick). **Recommended:** Speed presets (1x, 2x, 4x, 8x) with hotkeys. Priority: Medium. Complexity: Low. Phase: 1.
+
+47. **Auto-pause on disaster:** Game doesn't pause when disaster occurs. **Recommended:** Optional auto-pause when disaster triggers (configurable). Priority: Low. Complexity: Low. Phase: 1.
+
+48. **Minimap click-to-pan:** Minimap exists but no click-to-pan. **Recommended:** Click on minimap to pan camera to that location. Priority: Low. Complexity: Low. Phase: 1.
+
+### 23.6 Scalability Challenges
+
+49. **Grid size limits:** Current max 60×60. **Recommended:** Support up to 200×200 with chunked rendering and LOD. Priority: Low. Complexity: High. Phase: 3+.
+
+50. **Citizen count limits:** Current max 300 citizens (instanced). **Recommended:** Support up to 10,000 citizens with aggressive LOD (dots at distance, no animation at far range). Priority: Low. Complexity: High. Phase: 3+.
+
+51. **Save file size:** No compression. **Recommended:** Use lz-string compression for save data. Reduces localStorage usage by 60-80%. Priority: Medium. Complexity: Low. Phase: 1.
+
+52. **Rendering performance:** No frustum culling. **Recommended:** Only render tiles within camera viewport + margin. Priority: Medium. Complexity: Medium. Phase: 1.
+
+### 23.7 Priority Summary (Phase 1 — must-have for first vertical slice)
+
+| # | Feature | Priority | Complexity |
+|---|---|---|---|
+| 1 | Split App.tsx into simulation engine + state + rendering | High | Medium |
+| 2 | Spatial indexing (quadtree/spatial hash) | High | Medium |
+| 3 | Automated testing infrastructure (Vitest) | High | Medium |
+| 4 | Save format versioning | High | Low |
+| 5 | localStorage size mitigation (compression + IndexedDB) | High | Medium |
+| 6 | Per-system error boundaries | Medium | Low |
+| 7 | Configuration management (centralized config store) | Medium | Low |
+| 8 | Input validation (zod) | Medium | Low |
+| 9 | Performance profiling overlay | Medium | Low |
+| 10 | Auto-save indicator | Low | Low |
+| 11 | Pause on focus loss | Low | Low |
+| 12 | Notification center | Medium | Low |
+| 13 | Tooltips on all UI elements | Low | Low |
+| 14 | Game speed presets | Medium | Low |
+| 15 | Auto-pause on disaster | Low | Low |
+| 16 | Minimap click-to-pan | Low | Low |
+| 17 | Hot-reload for development | Low | Low |
+| 18 | Crash recovery (backup restore) | Medium | Low |
+| 19 | Automatic backups | Medium | Low |
+| 20 | Frustum culling | Medium | Medium |
+
+### 23.8 Dependency-Ordered Roadmap
+
+**Phase 1 (Foundation):** Split App.tsx, spatial indexing, automated testing, save format versioning, localStorage compression, per-system error boundaries, centralized config, input validation, performance profiling, auto-save indicator, pause on focus loss, notification center, tooltips, game speed presets, auto-pause on disaster, minimap click-to-pan, hot-reload, crash recovery, automatic backups, frustum culling.
+
+**Phase 2 (Civilization Core):** Citizen lifecycle (birth/aging/death), skill progression, technology/research tree, quest system, citizen interactions, reputation/fame, event system for citizen interactions, citizen needs (hunger/shelter/employment), home/job assignment, daily routines, citizen models, event sourcing/command pattern, memory management, accessibility (screen reader, high contrast, colorblind), undo for admin actions, screenshot gallery, skill progression, technology tree.
+
+**Phase 3 (Advanced Features):** Diplomacy/relations, modding/extensibility, localization/i18n, keyboard shortcut customization, citizen lifecycle, grid size limits (200×200), citizen count limits (10,000), ECS architecture, Web Worker simulation, multiplayer groundwork.
+
+**Phase 4 (Polish & Scale):** Performance optimization, advanced rendering, full asset library, comprehensive testing, documentation, rollback instructions.
+
+### 23.9 Key Recommendations (challenging assumptions)
+
+1. **Challenge: "No AI models"** — The spec says 100% offline with no LLMs. This is correct for the civilization simulation. But the original app had AI-generated goals/news. The fake AI (template library) is the right replacement. No change needed.
+
+2. **Challenge: "Single settlement"** — The spec focuses on one settlement. But the game already has a 60×60 grid which could support multiple settlements. **Recommendation:** Design the state architecture to support multiple settlements from the start (even if only one is active in v1). This avoids a painful migration later.
+
+3. **Challenge: "Citizens are boxes"** — The spec says citizens are instanced box meshes. The PS1 visual spec says modular sprite system. **Recommendation:** Start with simple low-poly models (head + body) rather than boxes. The instanced rendering already supports this. Priority: Medium.
+
+4. **Challenge: "No save versioning"** — The spec doesn't mention save format versioning. **Recommendation:** Add `version` field to save data from day one. Migration functions for each version. This is critical for long-term maintenance.
+
+5. **Challenge: "Monolithic App.tsx"** — The spec doesn't address code architecture. **Recommendation:** Split App.tsx into simulation engine (pure logic), state management (React context/store), and rendering (R3F scene). This is essential for testability and maintainability.
+
+6. **Challenge: "No automated testing"** — The spec mentions tests but no framework. **Recommendation:** Use Vitest + React Testing Library. Unit tests for simulation logic, integration tests for game loop, E2E tests for critical flows. Target 80% coverage for simulation logic.
+
+7. **Challenge: "localStorage only"** — The spec uses localStorage for saves. **Recommendation:** Use IndexedDB for large saves (citizens, event history, statistics). localStorage for small settings. This avoids the 5-10MB limit.
+
+8. **Challenge: "No spatial indexing"** — The spec doesn't mention spatial data structures. **Recommendation:** Implement a spatial hash or quadtree for O(1) neighbor queries. Critical for performance with 3600+ tiles and hundreds of citizens.
+
+9. **Challenge: "No event sourcing"** — The spec mentions causal event integrity but no event sourcing. **Recommendation:** Implement command pattern for all state changes. Enables undo/redo, replay, and audit trail. Essential for the admin console's "undo" feature.
+
+10. **Challenge: "No configuration management"** — Settings are scattered. **Recommendation:** Centralized config store with schema validation, defaults, and persistence. Single source of truth for all game settings.
 
 ## 18. Foliage, Vegetation, Environmental Decoration (refinements)
 
