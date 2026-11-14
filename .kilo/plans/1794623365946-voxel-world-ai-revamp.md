@@ -1051,4 +1051,213 @@ export const TRAFFIC_JAM_THRESHOLD = 3;
 export const CONGESTION_HAPPINESS_PENALTY = -5;
 export const NIGHT_GLOW_INTENSITY = 0.5;
 export const SCREENSHOT_RESOLUTION = 4;  // 4x render scale
+
+## 18. Foliage, Vegetation, Environmental Decoration (refinements)
+
+### 18.1 Foliage System
+- Trees (3 types: deciduous, coniferous, palm — cost 25-30, +1 happiness within 3-tile radius, reduces pollution by 0.5, 3 variants per type, instanced rendering). Bushes/Shrubs (2 types — cost 10, +0.5 happiness, 2 variants). Flowers (3 types: red/yellow/purple — cost 5, decorative only, 3 variants). Grass (auto-generated on empty tiles, 3 types, visual only, replaced by buildings). Fallen leaves (autumn particle effect from deciduous trees).
+- **Affected files:** `types.ts` (add `FoliageType` enum), `constants.tsx` (foliage configs), `App.tsx` (placement logic, happiness/pollution integration), `components/IsoMap.tsx` (instanced foliage rendering)
+
+### 18.2 Environmental Decoration
+- Street lamps (cost 15, light at night, auto-placed on roads). Benches (cost 8, +0.5 happiness within 2-tile radius). Fountains (cost 50, +2 happiness within 3-tile radius, water particles). Statues (cost 100, +1 happiness within 4-tile radius). Street signs (auto-placed on intersections, decorative). Trash cans (auto-placed near commercial). Fire hydrants (auto-placed on road-adjacent tiles).
+- **Affected files:** `types.ts` (add `DecorationType` enum), `constants.tsx` (decoration configs), `App.tsx` (placement logic), `components/IsoMap.tsx` (instanced decoration rendering)
+
+### 18.3 Seasonal Changes
+- 4 seasons, 90 days each (360-day year). Spring (days 1-90): grass grows, flowers bloom, trees green, rain more frequent, +2 happiness. Summer (91-180): bright lighting, no rain, trees full green, +1 happiness, water demand +20%. Autumn (181-270): leaves change color, leaf particles, grass browns, 0 happiness bonus. Winter (271-360): snow on ground/rooftops, bare deciduous trees, -2 happiness, water demand -20%, snow particles. Season indicator in top bar.
+- **Affected files:** `types.ts` (add `Season` enum), `constants.tsx` (season day ranges, bonuses), `App.tsx` (season calculation), `components/IsoMap.tsx` (season-based colors, snow overlay, leaf particles), `components/UIOverlay.tsx` (season indicator)
+
+### 18.4 Weather System (expanded)
+- Rain (particles, -1 happiness, +20% water production, washes 1 pollution per tick, 20% chance in spring/autumn). Snow (particles, visual only, 30% chance in winter). Fog (volumetric FogExp2, reduces visibility, 10% chance any season). Thunderstorm (heavy rain + lightning + thunder, -3 happiness, +40% water, washes 2 pollution, 5% chance in spring/summer). Weather indicator in top bar.
+- **Affected files:** `types.ts` (add `Weather` enum), `constants.tsx` (weather chances, effects), `App.tsx` (weather roll in game loop), `components/IsoMap.tsx` (particle systems, fog), `components/UIOverlay.tsx` (weather indicator)
+
+### 18.5 Wildlife
+- Enhanced birds (seagulls near water, pigeons near commercial, perch on buildings, varied flight). Butterflies (near flowers/parks, 3 colors, spring/summer only). Squirrels (near trees, 2 colors, year-round). Fish (in water tiles, jump occasionally, visual only).
+- **Affected files:** `types.ts` (add `WildlifeType` enum), `components/IsoMap.tsx` (instanced wildlife rendering, behavior)
+
+### 18.6 Foliage & Decoration Constants
+```ts
+export const FOLIAGE_COSTS = { tree_deciduous: 25, tree_coniferous: 25, tree_palm: 30, bush_round: 10, bush_tall: 10, flower_red: 5, flower_yellow: 5, flower_purple: 5 };
+export const FOLIAGE_HAPPINESS = { tree_deciduous: 1, tree_coniferous: 1, tree_palm: 1, bush_round: 0.5, bush_tall: 0.5 };
+export const FOLIAGE_POLLUTION_REDUCTION = { tree_deciduous: 0.5, tree_coniferous: 0.5, tree_palm: 0.5 };
+export const DECORATION_COSTS = { street_lamp: 15, bench: 8, fountain: 50, statue: 100 };
+export const DECORATION_HAPPINESS = { street_lamp: 0, bench: 0.5, fountain: 2, statue: 1 };
+export const SEASON_DAYS = { spring: [1, 90], summer: [91, 180], autumn: [181, 270], winter: [271, 360] };
+export const SEASON_HAPPINESS_BONUS = { spring: 2, summer: 1, autumn: 0, winter: -2 };
+export const SEASON_WATER_DEMAND_MULT = { spring: 1.0, summer: 1.2, autumn: 1.0, winter: 0.8 };
+export const WEATHER_CHANCES = { rain: 0.2, snow: 0.3, fog: 0.1, thunderstorm: 0.05 };
+export const WEATHER_HAPPINESS_EFFECT = { rain: -1, snow: 0, fog: 0, thunderstorm: -3, sunny: 0 };
+export const WEATHER_WATER_BOOST = { rain: 1.2, snow: 1.0, fog: 1.0, thunderstorm: 1.4, sunny: 1.0 };
+export const WEATHER_POLLUTION_WASH = { rain: 1, snow: 0, fog: 0, thunderstorm: 2, sunny: 0 };
+```
+
+### 18.7 Foliage Rendering
+- Instanced rendering for trees, bushes, flowers, grass (same pattern as buildings/cars/citizens).
+- Season-based color changes: deciduous trees green→yellow→orange→bare, coniferous stays green, grass green→brown→snow-covered.
+- Foliage LOD: high=full mesh, medium=simplified, low=colored dot.
+- Grass auto-generated on empty tiles: 4 grass blades per tile, random rotation, slight color variation.
+- Leaf particles: instanced small quads falling from deciduous trees in autumn.
+
+### 18.8 Foliage BuildingType Additions
+```ts
+export enum BuildingType {
+  // ... existing ...
+  Bridge = 10,
+  TreeDeciduous = 11, TreeConiferous = 12, TreePalm = 13,
+  BushRound = 14, BushTall = 15,
+  FlowerRed = 16, FlowerYellow = 17, FlowerPurple = 18,
+  StreetLamp = 19, Bench = 20, Fountain = 21, Statue = 22,
+}
+```
+
+### 18.9 Type Changes (additions)
+```ts
+// Add to TileData:
+rotation?: number;   // 0, 90, 180, 270
+tier?: number;       // 0 = base, 1 = upgraded, 2 = max
+damaged?: boolean;   // disaster damage state
+
+// New enums:
+export enum Season { Spring, Summer, Autumn, Winter }
+export enum Weather { Sunny, Rain, Snow, Fog, Thunderstorm }
+export enum WildlifeType { Bird, Seagull, Pigeon, Butterfly, Squirrel, Fish }
+```
+
+### 18.10 Implementation Tasks (foliage/season/weather)
+19. Add foliage types to BuildingType enum and BUILDINGS record
+20. Add Season and Weather enums to types.ts
+21. Add foliage placement logic to App.tsx (happiness + pollution integration)
+22. Add decoration placement logic to App.tsx (happiness integration)
+23. Add season calculation to game loop
+24. Add weather roll to game loop (with effects on happiness, water, pollution)
+25. Add foliage instanced rendering to IsoMap.tsx (season-based colors)
+26. Add decoration instanced rendering to IsoMap.tsx
+27. Add grass auto-generation to IsoMap.tsx
+28. Add leaf particles (autumn) to IsoMap.tsx
+29. Add weather particle systems (rain, snow, fog, thunderstorm) to IsoMap.tsx
+30. Add season/weather indicators to UIOverlay.tsx
+31. Add wildlife enhancement (seagulls, pigeons, butterflies, squirrels, fish) to IsoMap.tsx
+32. Run `npm install && npm run lint`
+
+## 20. Integrated Administration, Configuration & Developer Console
+
+### 20.1 Three Operational Areas
+Administration (direct control over running civilization), Configuration (control over simulation rules), Developer Tools (inspection, profiling, debugging, experiments).
+
+### 20.2 Access Levels
+Player (normal gameplay only), Administrator (manage entities, modify settings, trigger events), Developer (debugging, profiling, state manipulation, replay, testing). World owner has admin+dev by default. Record which administrator initiated each privileged command.
+
+### 20.3 In-Game Control Center (10 sections)
+Overview, Citizens, Economy, Government, World, Simulation, Chaos, Developer, History, Configuration. Functional tabs, searchable entity lists, filters, contextual actions, detailed inspectors. Selecting entity on map opens corresponding inspector.
+
+### 20.4 Citizen Administration
+View complete authoritative citizen state. Search/filter by name, household, occupation, needs, status. Inspect employment, finances, needs, skills, goals, memories, relationships. Follow movement and decision-making. Inspect action plans and prerequisites. Change employment via validated hiring/termination. Adjust attributes within documented ranges. Transfer citizens between valid households/residences. Spawn new citizens using valid initialization rules. Retire, relocate, or remove citizens with explicit cleanup. Apply controlled interventions to selected populations. Bulk operations with previews, affected-entity counts, confirmation for destructive changes. Never leave orphaned households, invalid jobs, or unresolved ownership references.
+
+### 20.5 Economic Administration
+Inspect business accounts, financial health, employment, unemployment, wages, vacancies, supply chains, production, inventories, shortages, pricing, market demand, household spending, public revenue/expenditure, transaction histories. Adjust documented economic policies and production parameters. Controlled financial interventions (fund struggling business via explicit ledger transaction with defined source). Dedicated administrative issuance account or explicitly modeled source/sink for sandbox currency. No silent balance increases. All financial intervention auditable.
+
+### 20.6 Government Administration
+Set income tax rates. Inspect public revenue. View and authorize expenditure. Configure public service priorities. Adjust maintenance budgets. Monitor infrastructure condition. Trigger government-funded projects where implemented. Review policy consequences. Policy changes via versioned configuration events. Show when change takes effect. Do not retrospectively alter finalized transactions.
+
+### 20.7 World Administration
+Inspect buildings and occupants, roads and accessibility, production facilities, resource deposits, construction projects, ownership/operational status, active incidents. Controlled world edits: place supported buildings, remove buildings with dependency validation, open/close roads, repair damaged infrastructure, adjust resources via recorded interventions, modify building operating parameters, trigger construction/demolition workflows. Separate normal gameplay construction from administrative world editing. Administrative construction may bypass gameplay costs only when sandbox privileges explicitly allow. Bypass still creates valid entity state and provenance records.
+
+### 20.8 Simulation Configuration
+Editable controls for: Time (speed, pause, resume, single-tick, day length, scheduling), Citizen Behavior (needs decay, decision intervals, goal priorities, personality influence, memory retention, variability), Economy (wages, tax rates, production coefficients, pricing limits, market responsiveness, operating expenses), Population (initialization, migration eligibility, limits, household rules), Environment (resource regeneration, environmental risk, infrastructure deterioration, construction constraints), Performance (detail levels, update frequencies, scheduling budgets, diagnostic overhead). Every parameter: documented type and valid range, default value, explanation of effect, validation before application, defined effective time, persistence rule, reset-to-default. Categorize as: Live (safe immediately), Tick-boundary (next tick), Paused-only (requires paused), Restart-required (cannot safely affect running simulation).
+
+### 20.9 Chaos Administration (Chaos Laboratory)
+Controls: enable/disable chaos, intensity 0-100, reality mode (REALISTIC/HEIGHTENED/SURREAL), incident frequency and severity, max concurrent incidents, event cooldowns, cascade propagation, recovery behavior, incident eligibility, random seed, manual event injection. Incident catalogue: each event displays prerequisites, possible targets, estimated severity, expected affected systems, recovery mechanics. Preview → Trigger → Observe workflow. Administrators can select specific building, citizen, road, or district as target. Manual triggers bypass ordinary probability/cooldown only through explicit override. Never bypass invariant validation. Optional Chaos Director mode: chooses incidents according to world's changing stability. Must obey selected realism mode and use actual world conditions. Presets: Peaceful Settlement, Realistic Civilization, Economic Turbulence, Disaster-Prone World, Unstable Reality, Total Absurdity. Presets editable and exportable.
+
+### 20.10 Developer Inspection Tools
+State Inspector (browse entities, components, references, inventories, accounts, action states; show current/previous values; validated edit controls). Decision Inspector (candidate goals, utility scores, chosen goal, preconditions, planned actions, rejected alternatives, failure reasons, replanning triggers). Economic Inspector (monetary flows, inventory movements, supply chains, transaction failures, conservation reconciliations). Spatial Debugging (overlay walkable/blocked tiles, navigation paths, citizen destinations, road connectivity, business service areas, resource locations, movement reservations). Event Inspector (trace events from originating actions to downstream consequences, parent/child relationships). Performance Profiler (measured values for simulation update duration, rendering duration, active citizens, decisions evaluated, queued events, pathfinding work, entity counts, memory usage, slow systems).
+
+### 20.11 Simulation Experiments
+Sandbox experimentation workflow: (1) save/snapshot current world, (2) create separate experimental branch, (3) adjust parameters, (4) inject selected events, (5) advance specified ticks, (6) inspect outcomes and metrics, (7) compare with baseline, (8) discard or adopt resulting state. Keep experiments isolated from main save until explicitly committed. Comparisons use actual completed simulation runs. Support reproducible experiment identifiers, seeds, configuration, ordered intervention logs.
+
+### 20.12 Administrative Safety
+All privileged modifications use validated commands. Each command defines: required permission, target entities, expected state version, preconditions, proposed changes, invariant checks, resulting events, audit metadata, reversal/recovery strategy. Preview and confirmation for high-impact actions. Atomic application for multi-entity commands. Append-only administrative audit history. Support undo only when true inverse operation is safe; otherwise require checkpoint restoration or compensating transaction. Restoring checkpoint must also restore/branch relevant RNG state, event queue, simulation history. Never modify authoritative world state directly through a UI component.
+
+### 20.13 Configuration Management
+In-game configuration manager with: current settings, documented defaults, named presets, preset comparison, changed-value indicators, search/category filters, import/export, schema validation, save-specific overrides, reset options. Separate configuration layers (deterministic precedence): (1) engine defaults, (2) selected simulation preset, (3) current world overrides, (4) temporary experiment overrides. Include configuration schema version and migrations. Prevent incompatible settings from being silently applied.
+
+### 20.14 First Vertical Slice (10 items)
+1. Overview: population, employment, businesses, treasury, simulation time, active incidents.
+2. Citizen Inspector: select any citizen, inspect needs, job, finances, location, goal, current action.
+3. Economy Inspector: inspect farm, bakery, market, inventories, account balances, transaction history.
+4. Simulation Controls: pause, resume, speed adjustment, single-tick execution.
+5. Configuration: edit income tax rate and at least one documented citizen decision parameter.
+6. Chaos Laboratory: edit intensity and reality mode, manually trigger Equipment Breakdown, Road Closure, Bread Rain, inspect consequences.
+7. Developer Inspector: inspect authoritative state, decision reasoning, failed commands, invariant status.
+8. Audit History: review administrator actions (actor, target, tick, parameters, outcome, resulting events).
+9. Persistence: save and reload all administrative settings and active world state.
+10. Everything listed must have real functionality. No placeholder buttons, fake controls, or simulated diagnostic values.
+
+### 20.15 Acceptance Tests (15 items)
+Verify that: (1) Normal players cannot execute privileged commands. (2) Administrators can access required in-game controls. (3) Configuration changes obey declared application timing. (4) Invalid configuration values rejected. (5) Financial interventions preserve auditable accounting. (6) Citizen modifications cannot create invalid references. (7) Chaos controls affect actual incident eligibility. (8) Surreal incidents cannot run under REALISTIC mode. (9) Manual incident injection recorded and reproducible. (10) Pausing prevents simulation progression. (11) Single-step executes exactly one authoritative simulation tick. (12) Snapshot experiments do not mutate original world. (13) Administrative actions survive save/load. (14) Identical administrative input sequences replay deterministically. (15) State and accounting invariants remain valid. Developer diagnostics accurately reflect actual simulation.
+
+### 20.16 Design Requirements
+Dense, practical developer interface. Dark, low-distraction appearance consistent with existing game. Clear information hierarchy, compact controls, readable metrics, searchable tables, informative status indicators. Avoid unnecessary animations, oversized decorative panels, glass effects, gradients. Responsive at supported resolutions. Don't interrupt normal gameplay unless administrator opens modal operation requiring confirmation.
+
+### 20.17 Key Implementation Notes
+- Every game system that can be configured should eventually have appropriate in-game administration interface.
+- Engine remains authoritative. In-game console becomes primary control surface for administrators.
+- Terminal commands and raw config editing may remain optional dev interfaces, but ordinary administration must not depend on them.
+- Preserve strict first vertical slice and its invariants.
+- Build, validate, deliver essential administration controls before expanding to advanced experimentation or full civilization management.
+
+### 20.18 Implementation Tasks (admin console)
+33. Create admin control center component (tabbed interface)
+34. Implement Overview tab (population, employment, businesses, treasury, time, incidents)
+35. Implement Citizen inspector (select, inspect, follow, modify, spawn, remove)
+36. Implement Economy inspector (businesses, inventories, transactions, finances)
+37. Implement Government inspector (tax, treasury, spending, policies)
+38. Implement World inspector (buildings, roads, resources, construction)
+39. Implement Simulation controls (pause, resume, speed, single-tick)
+40. Implement Configuration panel (time, behavior, economy, population, environment, performance)
+41. Implement Chaos Laboratory (intensity, reality mode, manual triggers, incident catalogue, presets)
+42. Implement Developer inspector (state, decisions, economics, spatial, events, performance)
+43. Implement Simulation experiments (snapshot, branch, adjust, advance, compare, adopt/discard)
+44. Implement administrative safety (validated commands, preview/confirm, atomic application, audit history)
+45. Implement configuration management (current settings, defaults, presets, import/export, schema validation)
+46. Run `npm install && npm run lint`
+
+## 21. World Forking (prioritized feature)
+
+### 21.1 Concept
+Clone the current civilization into two separate saves, introduce a different disaster or policy in each, and compare how their histories diverge. Turns the entire world builder into an experimentation environment.
+
+### 21.2 Implementation
+- **Fork button** in admin console: creates a deep copy of current WorldState, CitizenState, HouseholdState, BusinessState, GovernmentState, EconomyState, ChaosState, SimulationState.
+- Fork gets a new save slot ID (e.g., `sky_metropolis_fork_1`, `sky_metropolis_fork_2`).
+- Each fork runs independently with its own simulation clock, RNG state, and event history.
+- Forks can be renamed, deleted, or merged back (adopt fork state into main save).
+- Comparison view: side-by-side metrics (population, treasury, happiness, pollution, buildings, disasters) with divergence chart.
+- Fork lineage tracked: parent save ID, fork tick, fork reason, fork parameters.
+
+### 21.3 State Forking Rules
+- Deep copy all state domains (no shared references).
+- RNG state branched with new seed derived from parent seed + fork index.
+- Event history copied up to fork tick, then diverges.
+- Chaos configuration copied, but incidents are fork-specific after fork point.
+- Administrative audit history copied up to fork tick.
+
+### 21.4 UI
+- Fork button in admin console header (with confirmation dialog).
+- Fork list in save/load menu (shows parent, fork tick, divergence metrics).
+- Comparison view: toggle between fork and main save, side-by-side stats, divergence chart.
+- Merge button: adopt fork state into main save (with confirmation, creates backup of main save first).
+
+### 21.5 Implementation Tasks
+47. Implement deep copy of all state domains (WorldState, CitizenState, etc.)
+48. Implement fork creation (new save slot, RNG seed derivation, event history copy)
+49. Implement fork management UI (list, rename, delete, compare)
+50. Implement comparison view (side-by-side metrics, divergence chart)
+51. Implement merge (adopt fork state into main save with backup)
+52. Run `npm install && npm run lint`
+
+### 21.6 Validation
+- Fork creates independent save that runs without affecting original.
+- Fork at tick N, advance both by M ticks with different policies → divergent states.
+- Deterministic replay: same fork inputs → identical fork state.
+- Save/load preserves fork lineage and divergence data.
+- Merge creates backup of main save before overwriting.
 ```
