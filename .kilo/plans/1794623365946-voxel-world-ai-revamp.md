@@ -712,7 +712,210 @@ Curated from gap analysis of the current codebase — systems that are missing o
 1. **Disaster frequency** — pollution-gated. Disasters only trigger when total pollution exceeds a threshold.
 2. **Blueprint format** — base64 of compressed JSON.
 3. **Multiple settlements** — deferred to a future update. Single city for v1.
-4. **Implementation-level details** — all resolved with recommended choices (template pools, performance heuristic, music lab, idea lab, UI overlay). See §10, §12, §15.
+## 19. Living World — Autonomous Civilization Simulation (vertical slice)
+
+### 19.1 Scope Lock (first vertical slice)
+
+One isolated settlement, 100% offline, no LLMs/APIs. Reference configuration:
+
+| Entity | Initial quantity |
+|---|---:|
+| Citizens | 24 |
+| Households | 8 |
+| Residential buildings | 8 |
+| Farm | 1 |
+| Bakery | 1 |
+| Market | 1 |
+| Government / town hall | 1 |
+| Currency | 1 |
+| Goods | Grain and bread |
+| Tax type | Income tax (10%) |
+| Road network | 1 connected network |
+| Simulation region | 1 settlement (20×20 tile test map) |
+
+These are acceptance-test fixtures, not permanent engine limitations.
+
+### 19.2 Required Citizen Behaviors
+
+Every citizen has: unique persistent ID, household assignment, current location, home location, needs (hunger, fatigue, financial security), employment status, employer reference, wage rate, personal/household financial balance, skills, personality weights, current goal, current action, bounded memories of meaningful events.
+
+Every citizen must be capable of: traveling to work, performing assigned work, receiving wages, seeking employment, purchasing bread when hungry, eating purchased food, returning home and resting, changing priorities on important events.
+
+Use utility scoring + GOAP (goal-oriented action planning). Randomness may influence preferences but must not determine behavior without causal justification. Citizens retain goals across ticks (hysteresis, commitment intervals, replanning triggers).
+
+### 19.3 Economic Loop
+
+Farm → Grain → Bakery → Bread → Market → Households
+
+- Farm produces grain using land, labor, production time.
+- Bakery purchases grain, converts to bread via recipe (labor + processing time).
+- Market purchases bread, sells to households.
+- Citizens work → receive wages → pay income tax → purchase food.
+- Government receives taxes into treasury, spends on public expenses (road maintenance).
+- Businesses pay for inventories, employees, operating expenses.
+- Every purchase transfers money between real accounts. Every produced item has recorded source. Every consumed item removed from inventory. No money/goods/resources appear without defined origin.
+
+### 19.4 Government Loop
+
+Income tax initially 10%. When wages paid: employer debited gross wage, worker receives net wage, government receives tax amount. Transaction references worker, employer, tax policy, simulation time. Government maintains actual treasury. Public spending debits treasury, credits recipient. If treasury can't afford, expenditure rejected or deferred. No additional tax types, elections, or bureaucracy in first slice.
+
+### 19.5 State Architecture
+
+Separated state domains: WorldState (time, seed, RNG state, map entities, roads, buildings, resources, weather, events), CitizenState (identity, needs, location, knowledge, skills, goals, actions, employment, memories, relationships), HouseholdState (members, home, ownership, shared finances), BusinessState (identity, location, employees, openings, cash, inventory, orders, recipes, prices, production status), GovernmentState (treasury, tax rates, expenditures, infrastructure), EconomyState (accounts, transactions, inventories, orders, prices, production records), ChaosState (config, incidents, history, cooldowns, exposure, consequences), SimulationState (entity refs, scheduled actions, deterministic ordering, pending commands, persistence metadata).
+
+Single authoritative owner per mutable state. Stable entity IDs (not array indices). No duplicated mutable financial balances.
+
+### 19.6 Non-Negotiable State Invariants (INV-01 through INV-14)
+
+- **INV-01 Currency Conservation:** sum(all account balances) = initial total currency. Every transaction has equal debit/credit. Money cannot be created/destroyed.
+- **INV-02 Nonnegative Finances:** Account cannot spend more than owned. No credit/overdraft. Failed transaction is atomic (no partial state).
+- **INV-03 Inventory Conservation:** `current stock = initial stock + production + imports − consumption − exports − destruction`. Inventory never negative. Bread recipe consumes grain before producing bread.
+- **INV-04 Unique Entity Ownership:** Every citizen belongs to exactly one household. Every employed citizen has at most one employer. Every job has at most one occupant. Entity refs valid after save/load.
+- **INV-05 Spatial Validity:** Citizens occupy valid positions. Movement respects walkability and route connectivity. No teleportation. Must be physically present at workplace for location-dependent work.
+- **INV-06 Atomic Transactions:** Economic ops succeed completely or leave state unchanged. No money deduction without goods transfer. No employer debit without worker credit + tax.
+- **INV-07 Causal Event Integrity:** Every state change has originating command/action/event. Record event ID, tick, actor, affected entities, preconditions, state changes, outcome, parent event ID.
+- **INV-08 Valid State Transitions:** `IDLE → PLANNED → TRAVELING → EXECUTING → COMPLETED` (plus FAILED, CANCELLED, INTERRUPTED). Failed actions release reservations, no ghost assignments.
+- **INV-09 Deterministic Replay:** Identical initial state, seed, config, inputs, version → identical state + event history. Fixed timestep. Persist RNG state, pending events, action queues. Stable ordering for simultaneous events.
+- **INV-10 Persistence Integrity:** Save/load preserves citizens, households, money, inventories, employment, goals, actions, treasury, clock, RNG state, scheduled events, chaos config. Saving must not mutate state.
+- **INV-11 Need Bounds:** `0 ≤ hunger ≤ 100`, `0 ≤ fatigue ≤ 100`. Rate-limited by simulation time and activity costs.
+- **INV-12 No Omniscient NPCs:** Decisions depend on obtainable information only (observation, communication, published jobs, memories, public market data). No hidden future events.
+- **INV-13 Deterministic Conflict Resolution:** Two citizens claiming one job/item/resource — only one succeeds. Authoritative reservations, deterministic resolution.
+- **INV-14 Invariant Safety Under Chaos:** Chaos events use same validated state transitions and accounting. Even supernatural events account for money/resources/entities created or destroyed. Rules of reality may change; rules of state consistency may not.
+
+### 19.7 Enforcement Strategy
+
+Enforce invariants at system boundaries. Validated commands for employment, transactions, production, movement, construction, event application. Development-mode invariant audits at every committed tick. Production: critical validations always, full-world audits less frequently. On violation: reject operation, preserve/restore previous state, record failure, continue safely, expose via diagnostics. Never silently repair invalid financial state by inventing money/resources.
+
+### 19.8 Chaos Engine
+
+Two independent controls:
+
+**Chaos Intensity (0-100):**
+| Setting | Name | Behavior |
+|---|---|---|
+| 0 | Peaceful | No injected incidents |
+| 1-20 | Stable | Occasional minor incidents |
+| 21-40 | Everyday Life | Typical setbacks |
+| 41-60 | Turbulent | Frequent meaningful disruptions |
+| 61-80 | Crisis-Prone | Severe incidents, substantial ripple effects |
+| 81-100 | Catastrophic | Repeated crises, possible systemic collapse |
+
+**Reality Mode:** REALISTIC (plausible causes/effects), HEIGHTENED (unusual coincidences, exaggerated consequences), SURREAL (impossible/absurd events). Default: intensity 30, REALISTIC. Independently configurable. Surreal must be explicitly enabled.
+
+### 19.9 Realistic Chaos Categories
+
+Economic: demand changes, bankruptcies, recessions, labor shortages, price spikes, supplier failures, unexpected opportunities. Environmental: storms, flooding, drought, fires, crop failures, heat waves, infrastructure damage. Social: workplace disputes, community disagreements, strikes, localized crime, boycotts, unexpected cooperation, migration pressure. Infrastructure: road closures, service interruptions, transport bottlenecks, building damage, delayed construction, equipment failures. Do not enable an event until its required underlying mechanics exist.
+
+### 19.10 Surreal Chaos Catalogue (extensible, future)
+
+Examples: The Great Goose Uprising (geese occupy roads, disrupt commuting), Bread Rain (bread falls from sky, prices collapse), Mysterious Gold Rush (strange resource appears, labor shortages), Collective Workplace Madness (mass resignations), Time Distortion (activity durations change, tick ordering preserved), Sentient Architecture (building refuses occupants via access restrictions), The Potato Cult (charismatic citizen, followers alter spending/employment). Do not implement all in first slice — treat as extensible future catalogue.
+
+### 19.11 Chaos Must Be Causal
+
+Every event must have: eligibility rules, trigger conditions, target selection, severity, duration, affected systems, immediate consequences, potential secondary effects, recovery conditions, cooldown, recorded provenance. Realistic event risk depends on actual exposure. In surreal mode, impossible triggers permitted but consequences still interact with normal systems. A magical event may create bread; it may not silently alter accounting balances.
+
+### 19.12 Cascading Consequences
+
+Avoid artificial chains. Instead: disaster → damaged infrastructure → reduced accessibility → delayed deliveries → inventory shortage → lost sales → reduced cash reserves → missed payroll → unemployment → reduced demand. Each link depends on actual state and may or may not happen. Same event produces different outcomes in different settlements.
+
+### 19.13 Recovery and Adaptation
+
+Every recoverable incident has defined recovery mechanics: repairs, replacement purchases, reemployment, emergency spending, route changes, resource substitution, business restructuring, household relocation. Avoid permanent freezes unless recovery genuinely impossible. Recovery is not guaranteed — some settlements should fail.
+
+### 19.14 First Chaos Implementation (3 events only)
+
+**Event 1 — Equipment Breakdown** (all reality modes): Target farm or bakery. Reduces/stops production. Causes inventory shortages. Reduces revenue. Affects employment/wages via normal business policies. Recovers via funded repair or documented maintenance.
+
+**Event 2 — Road Closure** (all reality modes): Target one road segment. Blocks route. Forces alternative routes. Increases travel/delivery time. Delays workers/supplies. Affects production/retail inventory. Restores via repair/reopening. Reference map must have primary road + alternative route.
+
+**Event 3 — Bread Rain** (Surreal only): Spawn bounded quantity of bread at valid locations. Record as anomalous resource creation. Available via explicit collection rules. Affects market demand/prices via existing mechanics. Must never trigger in Realistic/Heightened modes. Do not implement additional chaos events until these three work and pass tests.
+
+### 19.15 Time and Scheduling
+
+Fixed simulation timestep = 1 simulated minute. Explicit schedules for: citizen needs, movement, work, production, shopping, wage payments, taxes, business decisions, chaos events, maintenance/recovery. Use event queues and scheduled updates. Don't recompute every decision every render frame. Simulation must run headlessly.
+
+### 19.16 Deterministic Randomness
+
+Persisted, seeded random generator. Separate random streams for: citizen initialization, routine decision variation, economic uncertainty, realistic chaos, surreal chaos. Persist stream state. Log externally introduced events and config changes.
+
+### 19.17 Chaos Configuration
+
+```json
+{
+  "chaos": {
+    "enabled": true,
+    "intensity": 30,
+    "reality_mode": "REALISTIC",
+    "seed": 12345,
+    "max_concurrent_incidents": 2,
+    "cooldown_ticks": 1440,
+    "recovery_enabled": true,
+    "allow_cascades": true
+  }
+}
+```
+
+Validate ranges and enum values. Don't expose controls that do nothing. Define how intensity maps to incident eligibility/severity. Changing settings affects future behavior without retroactively corrupting active incidents.
+
+### 19.18 No-Model Decision System (GOAP)
+
+Utility scores + goal-oriented action planning. Example: hungry citizen evaluates eat owned food, buy bread, work for money, seek assistance, rest. Each candidate has preconditions, expected costs, expected benefits, required resources, location requirements, risk/failure conditions. Agent selects feasible action or plan that makes desired action feasible. No action bypasses authoritative state rules. Citizens retain goals across ticks (hysteresis, commitment intervals, replanning triggers).
+
+### 19.19 Implementation Steps (from spec §27)
+
+1. **Inspect** — examine existing project, identify relevant code and dependencies.
+2. **Plan** — define smallest compatible integration architecture, authoritative state structures, exact files to modify.
+3. **Test foundation** — implement invariant tests and deterministic reference fixtures.
+4. **Functional economy** — implement citizen behavior, work, production, transactions, taxation, shopping, needs.
+5. **World integration** — connect simulation state to existing tiles, buildings, pathfinding.
+6. **Chaos engine** — implement eligibility, incident state, recovery, three required events.
+7. **Observability** — expose real citizen, business, government, chaos state.
+8. **Verification** — run unit, integration, headless, persistence, deterministic replay, invariant stress tests.
+
+Do not begin broad second development phase until first vertical slice passes.
+
+### 19.20 Implementation Boundaries (explicitly out of scope for v1)
+
+Full political simulation, complex relationships/marriage, generational inheritance, advanced healthcare, large-scale military conflict, sophisticated crime systems, global trade, dozens of professions, hundreds of resource types, complex technology progression, hundreds of supernatural event types. Design extension points but don't build unrequested subsystems. Preserve unrelated project files. Don't remove existing functionality. Document migrations and provide rollback path for save format changes.
+
+### 19.21 Required Final Report
+
+Report: files added/modified, implemented subsystems, implemented chaos incidents, invariants enforced, tests passed/failed, reference scenario results, deterministic replay outcome, performance measurements, known limitations, features deliberately deferred, rollback instructions. Use factual statuses: PASS, FAIL, BLOCKED, or NOT IMPLEMENTED. Never claim work completed without actual verification.
+
+### 19.22 Test Scenarios (from spec §22)
+
+- **Test A — Peaceful:** chaos intensity 0, no incidents, economy operates.
+- **Test B — Realistic:** realistic incidents at fixed intensity, verify eligible incidents produce bounded effects.
+- **Test C — Road Disruption:** close a road, verify pathfinding responds and deliveries change.
+- **Test D — Surreal Lockout:** max intensity, REALISTIC mode, run sufficient schedule, verify no surreal event eligible/executed.
+- **Test E — Bread Rain:** SURREAL mode, trigger Bread Rain, verify anomalous bread creation, collection, market effects, conservation accounting.
+- **Test F — Replay:** identical seeds/configs/inputs/ticks twice, compare state hashes and event histories.
+- **Test G — Save During Incident:** save while road closure or equipment breakdown active, reload, verify incident duration/effects/pending actions/recovery continue.
+- **Test H — Invariant Stress:** repeated purchases, job competition, insufficient funds, shortages, overlapping incidents. Verify all invariants satisfied.
+
+### 19.23 Acceptance Criteria (from spec §23)
+
+Vertical slice complete only when: all reference entities exist with valid state; citizens perform useful work and make context-dependent decisions; complete grain-to-bread supply chain operates; financial transactions and taxes reconcile exactly; inventory accounting reconciles exactly; at least one complete employment-to-purchase lifecycle succeeds; both realistic incidents function and recover; Bread Rain functions only under Surreal mode; an incident produces measurable causal economic consequence; save/load preserves active civilization; deterministic replay passes; automated invariant checks pass; reference scenario runs headlessly; citizen and business inspectors display actual state; existing world-builder functionality remains intact. Test over at least 30 simulated days with additional targeted crisis tests. Use integer currency units. Measure and report performance. If a test fails, report failure and cause. Do not mark complete.
+
+### 19.24 UI and Observability
+
+- **Citizen inspector:** current location, household, employment, income, savings, needs, current action, current goal, why action selected, important memories, recent consequences.
+- **Business inspector:** employees, account balance, inventory, production, revenue, expenses, supply problems, operational status.
+- **Government inspector:** treasury balance, taxes collected, expenditures, pending maintenance.
+- **Chaos control panel:** enable/disable, intensity 0-100, reality mode, active incident count, incident history, event seed, recovery setting, manual incident trigger (deterministic when recorded as external input). Show why incident occurred, who affected, resulting changes.
+- **Causality inspector:** make consequences inspectable (e.g., bakery equipment breakdown → production stopped → bread inventory fell → market stock decreased → purchases unfulfilled → revenue declined → wages delayed → unemployment → reduced demand). Each explanation references real events and state transitions.
+
+### 19.25 Key Implementation Notes
+
+- Use integer currency units to avoid floating-point monetary drift.
+- Measure and report performance rather than claiming scalability without benchmarks.
+- Provide reproducible reference settlement fixture (20×20 tile test map if compatible world map doesn't exist).
+- Citizens and businesses respond via same authoritative simulation systems — no hardcoded reactions.
+- Citizens retain goals across ticks (hysteresis, commitment intervals, replanning triggers).
+- No action bypasses authoritative state rules.
+- Design extension points but don't build unrequested subsystems.
+- Preserve unrelated project files. Don't remove existing functionality.
+- Document migrations and provide rollback path for save format changes.
 
 ## 18. Foliage, Vegetation, Environmental Decoration (refinements)
 
