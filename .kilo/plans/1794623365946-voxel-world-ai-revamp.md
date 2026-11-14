@@ -714,6 +714,97 @@ Curated from gap analysis of the current codebase — systems that are missing o
 3. **Multiple settlements** — deferred to a future update. Single city for v1.
 4. **Implementation-level details** — all resolved with recommended choices (template pools, performance heuristic, music lab, idea lab, UI overlay). See §10, §12, §15.
 
+## 18. Foliage, Vegetation, Environmental Decoration (refinements)
+
+### 18.1 Foliage System
+- **Current:** No foliage exists. Terrain is flat with buildings. Water plane at y=-0.6. No trees, bushes, or grass.
+- **Refinements:** Trees (3 types: deciduous, coniferous, palm — cost 25-30, +1 happiness within 3-tile radius, reduces pollution by 0.5, 3 variants per type, instanced rendering). Bushes/Shrubs (2 types — cost 10, +0.5 happiness, 2 variants). Flowers (3 types: red/yellow/purple — cost 5, decorative only, 3 variants). Grass (auto-generated on empty tiles, 3 types, visual only, replaced by buildings). Fallen leaves (autumn particle effect from deciduous trees).
+- **Affected files:** `types.ts` (add `FoliageType` enum), `constants.tsx` (foliage configs), `App.tsx` (placement logic, happiness/pollution integration), `components/IsoMap.tsx` (instanced foliage rendering)
+
+### 18.2 Environmental Decoration
+- **Current:** No environmental props. Only buildings, roads, resources, cars, citizens, clouds, birds.
+- **Refinements:** Street lamps (cost 15, light at night, auto-placed on roads). Benches (cost 8, +0.5 happiness within 2-tile radius). Fountains (cost 50, +2 happiness within 3-tile radius, water particles). Statues (cost 100, +1 happiness within 4-tile radius). Street signs (auto-placed on intersections, decorative). Trash cans (auto-placed near commercial). Fire hydrants (auto-placed on road-adjacent tiles).
+- **Affected files:** `types.ts` (add `DecorationType` enum), `constants.tsx` (decoration configs), `App.tsx` (placement logic), `components/IsoMap.tsx` (instanced decoration rendering)
+
+### 18.3 Seasonal Changes
+- **Current:** No seasonal system. Day counter exists but no visual season changes.
+- **Refinements:** 4 seasons, 90 days each (360-day year). Spring (days 1-90): grass grows, flowers bloom, trees green, rain more frequent, +2 happiness. Summer (91-180): bright lighting, no rain, trees full green, +1 happiness, water demand +20%. Autumn (181-270): leaves change color, leaf particles, grass browns, 0 happiness bonus. Winter (271-360): snow on ground/rooftops, bare deciduous trees, -2 happiness, water demand -20%, snow particles. Season indicator in top bar (🌸☀️🍂❄️).
+- **Affected files:** `types.ts` (add `Season` enum), `constants.tsx` (season day ranges, bonuses), `App.tsx` (season calculation), `components/IsoMap.tsx` (season-based colors, snow overlay, leaf particles), `components/UIOverlay.tsx` (season indicator)
+
+### 18.4 Weather System (expanded)
+- **Current:** No weather system. Clouds exist but are static decoration.
+- **Refinements:** Rain (particles, -1 happiness, +20% water production, washes 1 pollution per tick, 20% chance in spring/autumn). Snow (particles, visual only, 30% chance in winter). Fog (volumetric FogExp2, reduces visibility, 10% chance any season). Thunderstorm (heavy rain + lightning + thunder, -3 happiness, +40% water, washes 2 pollution, 5% chance in spring/summer). Weather indicator in top bar (☀️🌧️❄️🌫️⛈️).
+- **Affected files:** `types.ts` (add `Weather` enum), `constants.tsx` (weather chances, effects), `App.tsx` (weather roll in game loop), `components/IsoMap.tsx` (particle systems, fog), `components/UIOverlay.tsx` (weather indicator)
+
+### 18.5 Wildlife
+- **Current:** Birds (instanced meshes, flying in circles). No other wildlife.
+- **Refinements:** Enhanced birds (seagulls near water, pigeons near commercial, perch on buildings, varied flight). Butterflies (near flowers/parks, 3 colors, spring/summer only). Squirrels (near trees, 2 colors, year-round). Fish (in water tiles, jump occasionally, visual only).
+- **Affected files:** `types.ts` (add `WildlifeType` enum), `components/IsoMap.tsx` (instanced wildlife rendering, behavior)
+
+### 18.6 Foliage & Decoration Constants
+```ts
+export const FOLIAGE_COSTS = { tree_deciduous: 25, tree_coniferous: 25, tree_palm: 30, bush_round: 10, bush_tall: 10, flower_red: 5, flower_yellow: 5, flower_purple: 5 };
+export const FOLIAGE_HAPPINESS = { tree_deciduous: 1, tree_coniferous: 1, tree_palm: 1, bush_round: 0.5, bush_tall: 0.5 };
+export const FOLIAGE_POLLUTION_REDUCTION = { tree_deciduous: 0.5, tree_coniferous: 0.5, tree_palm: 0.5 };
+export const DECORATION_COSTS = { street_lamp: 15, bench: 8, fountain: 50, statue: 100 };
+export const DECORATION_HAPPINESS = { street_lamp: 0, bench: 0.5, fountain: 2, statue: 1 };
+export const SEASON_DAYS = { spring: [1, 90], summer: [91, 180], autumn: [181, 270], winter: [271, 360] };
+export const SEASON_HAPPINESS_BONUS = { spring: 2, summer: 1, autumn: 0, winter: -2 };
+export const SEASON_WATER_DEMAND_MULT = { spring: 1.0, summer: 1.2, autumn: 1.0, winter: 0.8 };
+export const WEATHER_CHANCES = { rain: 0.2, snow: 0.3, fog: 0.1, thunderstorm: 0.05 };
+export const WEATHER_HAPPINESS_EFFECT = { rain: -1, snow: 0, fog: 0, thunderstorm: -3, sunny: 0 };
+export const WEATHER_WATER_BOOST = { rain: 1.2, snow: 1.0, fog: 1.0, thunderstorm: 1.4, sunny: 1.0 };
+export const WEATHER_POLLUTION_WASH = { rain: 1, snow: 0, fog: 0, thunderstorm: 2, sunny: 0 };
+```
+
+### 18.7 Foliage Rendering
+- Instanced rendering for trees, bushes, flowers, grass (same pattern as buildings/cars/citizens).
+- Season-based color changes: deciduous trees green→yellow→orange→bare, coniferous stays green, grass green→brown→snow-covered.
+- Foliage LOD: high=full mesh, medium=simplified, low=colored dot.
+- Grass auto-generated on empty tiles: 4 grass blades per tile, random rotation, slight color variation.
+- Leaf particles: instanced small quads falling from deciduous trees in autumn.
+
+### 18.8 Foliage BuildingType Additions
+```ts
+export enum BuildingType {
+  // ... existing ...
+  Bridge = 10,
+  TreeDeciduous = 11, TreeConiferous = 12, TreePalm = 13,
+  BushRound = 14, BushTall = 15,
+  FlowerRed = 16, FlowerYellow = 17, FlowerPurple = 18,
+  StreetLamp = 19, Bench = 20, Fountain = 21, Statue = 22,
+}
+```
+
+### 18.9 Type Changes (additions)
+```ts
+// Add to TileData:
+rotation?: number;   // 0, 90, 180, 270
+tier?: number;       // 0 = base, 1 = upgraded, 2 = max
+damaged?: boolean;   // disaster damage state
+
+// New enums:
+export enum Season { Spring, Summer, Autumn, Winter }
+export enum Weather { Sunny, Rain, Snow, Fog, Thunderstorm }
+export enum WildlifeType { Bird, Seagull, Pigeon, Butterfly, Squirrel, Fish }
+```
+
+### 18.10 Implementation Tasks (foliage/season/weather)
+19. Add foliage types to BuildingType enum and BUILDINGS record
+20. Add Season and Weather enums to types.ts
+21. Add foliage placement logic to App.tsx (happiness + pollution integration)
+22. Add decoration placement logic to App.tsx (happiness integration)
+23. Add season calculation to game loop
+24. Add weather roll to game loop (with effects on happiness, water, pollution)
+25. Add foliage instanced rendering to IsoMap.tsx (season-based colors)
+26. Add decoration instanced rendering to IsoMap.tsx
+27. Add grass auto-generation to IsoMap.tsx
+28. Add leaf particles (autumn) to IsoMap.tsx
+29. Add weather particle systems (rain, snow, fog, thunderstorm) to IsoMap.tsx
+30. Add season/weather indicators to UIOverlay.tsx
+31. Add wildlife enhancement (seagulls, pigeons, butterflies, squirrels, fish) to IsoMap.tsx
+32. Run `npm install && npm run lint`
+
 1. **Disaster frequency** — pollution-gated. Disasters only trigger when total pollution exceeds a threshold.
 2. **Blueprint format** — base64 of compressed JSON.
 3. **Multiple settlements** — deferred to a future update. Single city for v1.
