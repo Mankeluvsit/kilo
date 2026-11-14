@@ -718,3 +718,43 @@ Curated from gap analysis of the current codebase — systems that are missing o
 2. **Blueprint format** — base64 of compressed JSON.
 3. **Multiple settlements** — deferred to a future update. Single city for v1.
 4. **Implementation-level details** — all resolved with recommended choices (template pools, performance heuristic, music lab, idea lab, UI overlay). See §10, §12.
+
+## 17. Engine, Terrain, Buildings, People, Cars (refinements)
+
+### 17.1 Terrain
+- **Current:** Flat grid with slight height variation (noise-based). Water plane at y=-0.6. No bridges, no terrain editing.
+- **Refinements:** Terrain height editor (raise/lower land, costs money, creates hills/valleys/cliffs). Water bodies (placeable lakes/rivers, affect land value and pollution). Bridges (new building type, road over water, cost 50). Terrain smoothing (auto-smooth edges between height differences to prevent floating buildings).
+- **Affected files:** `types.ts` (add `height` to TileData, `BuildingType.Bridge`), `constants.tsx` (bridge config), `App.tsx` (terrain edit logic), `components/IsoMap.tsx` (height-based rendering)
+
+### 17.2 Buildings
+- **Current:** Procedural box geometries with 3 variants per type. LOD system exists. Smoke stacks on industrial. Window blocks on residential/commercial.
+- **Refinements:** Building damage states (visual damage on disaster: cracked texture, tilted mesh, smoke; damaged buildings produce 50% output until repaired). Building upgrades (tier system: House→Apartment→Tower, Shop→Mall, Factory→Plant; costs money + reputation; taller/more detailed mesh per tier). Building rotation (R key rotates 90° before placement, stores `rotation` on TileData). Building variety (add 2 more variants per type, target 5 total). Glowing windows at night (emissive material on residential/commercial windows when day/night cycle active).
+- **Affected files:** `types.ts` (add `rotation`, `tier`, `damaged` to TileData), `constants.tsx` (tier costs, upgrade rep, repair cost), `components/IsoMap.tsx` (damage visuals, tier meshes, rotation, night glow)
+
+### 17.3 People (Citizens)
+- **Current:** Instanced box meshes walking randomly on walkable tiles. Agent count = `min(population/2, 300)`. Citizens have no needs, homes, or jobs.
+- **Refinements:** Citizen needs (hunger, shelter, employment — unmet needs reduce happiness; hungry citizens walk slower, unemployed idle). Home assignment (citizens assigned to residential buildings; no homes = population decreases). Job assignment (citizens work at commercial/industrial; employment rate affects happiness and income). Daily routines (home → work → shop → home along roads, not random). Citizen models (replace boxes with low-poly head+body, 2-3 color variants, keep instanced rendering).
+- **Affected files:** `types.ts` (Citizen interface), `App.tsx` (citizen simulation in game loop), `components/IsoMap.tsx` (citizen rendering, pathfinding)
+
+### 17.4 Cars (Traffic)
+- **Current:** Instanced box meshes driving on roads. Car count = `min(roadTiles, 30)`. Simple neighbor-based pathfinding. Cars have no destination logic.
+- **Refinements:** Destination-based traffic (spawn at residential, drive to commercial/industrial, return; reduces random wandering). Traffic lights (4-way junctions get lights; cars stop at red; reduces congestion). Parking (commercial/industrial have parking spots; cars park and disappear while "shopping/working"). Vehicle variety (sedan, truck, bus — different sizes/speeds). Traffic congestion metric (track cars per road tile; if > threshold, traffic jam → happiness penalty + news event).
+- **Affected files:** `types.ts` (VehicleType, TrafficLight), `App.tsx` (traffic simulation), `components/IsoMap.tsx` (vehicle rendering, traffic lights)
+
+### 17.5 Engine/Rendering
+- **Current:** Three.js with R3F. Orthographic camera. Soft shadows. Environment preset "city". Performance monitor with LOD. Instanced rendering for ground, buildings, resources, cars, citizens.
+- **Refinements:** Post-processing (bloom for glowing windows, SSAO for depth, color grading — add `@react-three/postprocessing`). Weather particles (rain reduces happiness slightly but boosts water production; snow visual only; fog reduces visibility). Dynamic shadows (shadow quality scales with LOD: high=2048px, medium=1024px, low=512px). Camera improvements (smooth zoom lerp, camera shake on disaster, cinematic auto-rotate mode). Screenshot mode (pause game, hide UI, render high-res PNG download).
+- **Affected files:** `components/IsoMap.tsx` (post-processing, weather, camera, screenshot), `package.json` (add `@react-three/postprocessing`)
+
+### 17.6 Engine Constants Update
+```ts
+export const TERRAIN_MAX_HEIGHT = 3;
+export const TERRAIN_MIN_HEIGHT = -1;
+export const BRIDGE_COST = 50;
+export const UPGRADE_COST_MULTIPLIER = 1.5;
+export const REPAIR_COST_RATIO = 0.5;
+export const TRAFFIC_JAM_THRESHOLD = 3;
+export const CONGESTION_HAPPINESS_PENALTY = -5;
+export const NIGHT_GLOW_INTENSITY = 0.5;
+export const SCREENSHOT_RESOLUTION = 4;  // 4x render scale
+```
