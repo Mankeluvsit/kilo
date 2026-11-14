@@ -1260,4 +1260,96 @@ Clone the current civilization into two separate saves, introduce a different di
 - Deterministic replay: same fork inputs → identical fork state.
 - Save/load preserves fork lineage and divergence data.
 - Merge creates backup of main save before overwriting.
+
+## 22. PlayStation-Era Visual Identity & Rendering System
+
+### 22.1 Visual Identity
+PS1-era isometric RPG aesthetics with optional enhanced PS1/early PS2 fidelity. Isometric 2D environments with convincing 3D depth. Pixel-art textures and low-poly-inspired architecture. Rich but controlled color palettes. Distinctive building silhouettes and environmental details. Small expressive animated citizens. Soft atmospheric depth and directional shadows. Visually interesting neighborhoods that evolve over time. Carefully controlled retro rendering artifacts (dithering, texture quantization, low-res shadows). Avoid generic mobile-game graphics, overly polished vector artwork, smooth plastic surfaces, arbitrary pixelation. No copyrighted sprites/textures/designs.
+
+### 22.2 Rendering Architecture
+Maintain existing isometric 2D architecture (R3F + Three.js). Support consistent isometric projection, correct depth sorting via entity anchor positions, terrain elevation, building/character occlusion, camera pan/zoom, pixel snapping at appropriate zoom levels, crisp texture scaling, render-layer separation (terrain/buildings/characters/effects/interface), efficient sprite atlases and batching. Use configurable low-resolution internal world-rendering target scaled to display. Preserve sharp readable UI independently of retro world-rendering resolution. Optional PlayStation-inspired texture jitter only where technically meaningful. Avoid unnecessary blur, extreme filtering, aggressive screen-space effects.
+
+### 22.3 Terrain and Environments
+Unified terrain asset system: grass and varied ground cover, dirt and footpaths, stone and paved roads, farmland and cultivated soil, water and shorelines, rocks and resource deposits, trees/bushes/vegetation, foundations and construction sites, environmental wear and damage. Tiles must connect naturally (no seams, repetitive patterns, incompatible lighting). Procedural tile variation with deterministic seeded selection. Small environmental details communicate land use and history. Terrain appearance reflects actual simulation data.
+
+### 22.4 Architecture
+Recognizable architectural language. Buildings feel like small carefully modeled 3D objects represented through pixel-art sprites or compatible low-poly-inspired rendering. Visual variation in: roof shape/material, wall textures, windows/doors, chimneys, signs/storefronts, building height, decorative details, maintenance condition, construction progress. Initially prioritize: residential homes, farm, bakery, market, town hall, roads and infrastructure. Consistent perspective, proportions, lighting, tile footprints. Coherent asset pipeline for future variations. No colored placeholder rectangles as final implementation.
+
+### 22.5 Citizen Visual Design
+Modular sprite system supporting variations in: clothing, hair, body proportions, occupation, age presentation, accessories, color combinations, walking/working animations. Appearance generation deterministic from persistent citizen attributes or saved appearance state. Citizen retains appearance after save/load. Initially support: idle, walk, work, eat, rest, interact, react to danger. Appropriate directional animations for camera/movement system. Animations correspond to real activity states (no working animations when unemployed).
+
+### 22.6 A World That Looks Alive
+Environment visibly reflects simulation activity. Morning: citizens leave homes, travel to workplaces, businesses begin operating. Working hours: farmers tend crops, bakery workers produce, customers visit market. Evening: citizens return home, some buildings close, residential activity increases. Economic downturn: businesses may close, storefronts inactive, buildings show neglect if maintained condition declines. Prosperity: construction increases, businesses expand where supported, neighborhoods more developed. All changes correspond to authoritative simulation state.
+
+### 22.7 Day, Night, Weather and Atmosphere
+Coherent atmospheric rendering system. Day/night: warm morning lighting, clear daytime illumination, long evening shadows, darker nighttime palettes, building/street illumination. Environmental effects: clouds and atmospheric shadows, rain, wind-driven vegetation, fog, dust, storm conditions, fire and smoke, water/surface effects. Weather effects reflect actual simulated weather when gameplay system exists. Visual-only ambient effects explicitly cosmetic. Restrained lighting and particles. Maintain readability of citizens, road connectivity, important buildings.
+
+### 22.8 Visual Consequences
+Environment communicates consequences of civilization simulation. Damaged building looks damaged. Closed business looks inactive. Repaired road visibly returns to usable condition. Construction project advances through visible stages. Resource depletion produces appropriate environmental changes. Citizens exhibit recognizable reactions to significant events. Avoid visual changes contradicting authoritative simulation.
+
+### 22.9 Chaos Visualization
+Integrate chaos engine with rendering system. Realistic chaos: equipment breakdowns → stopped machinery, repair activity; road closures → physical obstructions, altered movement; disasters → damage and recovery visuals. Surreal chaos: Bread Rain (pixel-art bread falls from sky, accumulates at valid locations, collectible per simulation rules), Goose Uprising (animated geese occupy roads, disrupt traffic, visible disorder), Time Distortion (localized visual distortion where temporal anomaly active), Sentient Architecture (buildings animate/exhibit unusual behavior while maintaining valid footprints/collision). Surreal visuals may exaggerate reality but must not corrupt world state or rendering. Only implement visual effects for chaos incidents supported by actual engine. For first slice, prioritize Equipment Breakdown, Road Closure, Bread Rain.
+
+### 22.10 Visual Style Presets
+Configurable rendering presets in admin/developer console:
+- **Authentic PS1:** low internal rendering resolution, nearest-neighbor scaling, restricted color precision, pronounced pixel textures, dithering, simplified lighting, conservative animation complexity.
+- **Enhanced PS1 (default):** PS1-inspired art direction, sharper environment detail, more varied character animation, improved atmospheric lighting, better shadow quality, comfortable modern display scaling.
+- **Early PS2:** higher-resolution textures/sprites, more environmental detail, smoother animations, more sophisticated lighting, still consistent with established isometric visual identity.
+Presets are stylization configurations, not hardware emulators. Must use implemented rendering capabilities.
+
+### 22.11 In-Game Graphics Configuration
+Functional controls for: visual preset, internal rendering resolution, pixel scaling mode, camera zoom, texture filtering, dithering intensity, color quantization, lighting quality, shadow quality, particle density, weather visual intensity, day/night brightness, animation quality, retro texture effects, optional CRT display effect, reduced motion, performance statistics. CRT effects and excessive screen distortion disabled by default. Clearly identify options requiring renderer restart or asset reload. Persist settings across sessions.
+
+### 22.12 Administrative Visual Debugging
+Developer console visualization tools. Overlays for: tile coordinates, collision boundaries, navigation paths, entity footprints, depth-sorting anchors, occlusion regions, building ownership, citizen destinations, resource locations, active incident areas, rendering performance. Toggle each overlay individually. Allow inspecting visual state of citizen/building alongside authoritative simulation state. Keep technical overlays separate from normal gameplay.
+
+### 22.13 Performance Requirements
+Graphical improvements must not undermine simulation performance. Use: sprite atlases, batched rendering, camera culling, reused animation assets, pooled particles, cached terrain layers, controlled lighting updates, efficient depth sorting, LOD techniques. Do not require expensive dynamic lighting or high-poly 3D geometry. Preserve headless simulation support. Benchmark rendering and simulation performance separately.
+
+### 22.14 Strict First Visual Slice
+Before creating large art library, completely polish one small playable settlement:
+1. Cohesive isometric terrain palette.
+2. Original terrain and road assets.
+3. Eight visually distinct residential buildings or documented variants.
+4. Farm with visible production activity.
+5. Bakery with operational and inactive states.
+6. Market with inventory/activity indicators.
+7. Visually identifiable town hall.
+8. Twenty-four persistent citizen appearances.
+9. At least idle and walking animation, plus supported work animations.
+10. Correct depth sorting and movement.
+11. Day/night presentation.
+12. Visual effects for three initial chaos incidents.
+13. Functional graphics settings.
+14. Polished interface consistent with game's art direction.
+All visuals must reflect underlying simulation where relevant. Don't build entire world's asset catalogue before reference settlement is functional.
+
+### 22.15 Art and Engineering Validation
+Verify: tile alignment and seamless terrain transitions, stable depth sorting during movement, correct occlusion around buildings, consistent sprite scale and perspective, persistent citizen appearance after save/load, animated activity matching real citizen states, road closures matching actual pathfinding restrictions, Bread Rain visuals corresponding to actual generated inventories, day/night and weather presentation responding to real world state, settings changing actual rendering behavior, no unintended regressions in simulation, no unsupported external dependencies, acceptable rendering performance measured on available hardware. Capture comparison screenshots for daytime, nighttime, busy settlement activity, damaged infrastructure, surreal chaos.
+
+### 22.16 Final Art Direction
+The world should feel handmade, atmospheric, inhabited, and memorable. A player should be able to zoom into a small settlement and see individual lives unfolding. Buildings should have personality. Neighborhoods should communicate their history. Workplaces should visibly operate. The environment should change as the civilization evolves. Realistic disasters should look consequential. Surreal chaos should look gloriously ridiculous while remaining stylistically coherent. The final aesthetic is a PlayStation-era isometric living-world simulation—not a generic pixel-art city builder and not a modern 3D game disguised with a retro filter.
+
+### 22.17 Suggested Default Preset
+Enhanced PS1 (default). Gives old-school PlayStation atmosphere while keeping population, buildings, and economic activity readable as settlement grows.
+
+### 22.18 Implementation Tasks (visual identity)
+53. Establish visual specification document (color palette, sprite sizes, perspective angles, lighting direction)
+54. Create terrain tile asset set (grass, dirt, stone, paved, farmland, water, shorelines, rocks)
+55. Create road asset set (straight, corner, T-junction, cross, bridge)
+56. Create building sprite set (8 residential variants, farm, bakery, market, town hall) with operational/inactive/damaged states
+57. Create citizen sprite system (modular: clothing, hair, body, accessories, 24 unique combinations)
+58. Create citizen animation set (idle, walk 4-dir, work, eat, rest, interact, danger reaction)
+59. Implement depth sorting by entity anchor position
+60. Implement camera pan/zoom with pixel snapping
+61. Implement day/night lighting system (warm morning, clear day, long evening shadows, dark night, building/street lights)
+62. Implement weather visual effects (rain particles, snow particles, fog, thunderstorm with lightning)
+63. Implement chaos visual effects (equipment breakdown stopped machinery, road closure obstructions, Bread Rain falling bread)
+64. Implement visual style presets (Authentic PS1, Enhanced PS1, Early PS2)
+65. Implement in-game graphics configuration controls (resolution, scaling, filtering, dithering, color quantization, lighting, shadows, particles, weather intensity, brightness, animation quality, CRT effect, reduced motion, performance stats)
+66. Implement administrative visual debugging overlays (tile coords, collision, paths, footprints, depth anchors, occlusion, ownership, destinations, resources, incidents, performance)
+67. Implement sprite atlases and batched rendering for performance
+68. Implement LOD system for foliage, buildings, citizens
+69. Capture comparison screenshots (daytime, nighttime, busy activity, damaged infrastructure, surreal chaos)
+70. Run `npm install && npm run lint`
 ```
